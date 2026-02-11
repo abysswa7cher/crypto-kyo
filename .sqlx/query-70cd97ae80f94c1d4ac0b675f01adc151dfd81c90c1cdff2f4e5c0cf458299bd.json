@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT token, created_by, expires_at as \"expires_at!\", used_by, used_at, created_at as \"created_at!\"\n        FROM invitations\n        WHERE token = $1 AND used_by IS NULL AND expires_at > NOW()\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "expires_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 3,
+        "name": "used_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "used_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "70cd97ae80f94c1d4ac0b675f01adc151dfd81c90c1cdff2f4e5c0cf458299bd"
+}
