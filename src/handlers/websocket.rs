@@ -35,15 +35,15 @@ pub async fn ws_handler(
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, claims)))
 }
 
+// src/handlers/websocket.rs
 async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
     let (mut sender, mut receiver) = socket.split();
     let user_id = claims.sub.clone();
+    let user_id_for_log = user_id.clone();
     let username = claims.username.clone();
     
-    // Subscribe to broadcast channel
     let mut rx = state.broadcast_tx.subscribe();
     
-    // Spawn task to receive broadcasts and send to this client
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             if sender.send(Message::Text(msg.into())).await.is_err() {
@@ -52,15 +52,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
         }
     });
     
-    // Main task: receive messages from this client and store in DB
     let db = state.db.clone();
     let broadcast_tx = state.broadcast_tx.clone();
-    let stego_service = state.stego_service.clone();
+    // REMOVE stego_service - no longer needed
     
-    let value = user_id.clone();
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
-            // Parse the incoming message
             let incoming: serde_json::Value = match serde_json::from_str(&text) {
                 Ok(v) => v,
                 Err(_) => continue,
@@ -71,17 +68,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
                 None => continue,
             };
             
-            // Encode message with steganography
-            let encoded_content = match stego_service.encode(content) {
-                Ok(e) => e,
-                Err(e) => {
-                    tracing::error!("Failed to encode message: {:?}", e);
-                    continue;
-                }
-            };
-            
-            // Store in database
-            let user_uuid = match uuid::Uuid::parse_str(&value) {
+            // NO ENCRYPTION - content is already encrypted by client
+            // Just store it as-is
+            let user_uuid = match uuid::Uuid::parse_str(&user_id) {
                 Ok(u) => u,
                 Err(_) => continue,
             };
@@ -94,7 +83,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
                 RETURNING id, user_id, content, created_at as "created_at!", edited_at, reply_to
                 "#,
                 user_uuid,
-                encoded_content
+                content  // Store encrypted content as-is
             )
             .fetch_one(&db)
             .await
@@ -106,38 +95,27 @@ async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
                 }
             };
             
-            // Decode for broadcast (so clients receive plaintext)
-            let decoded_content = match stego_service.decode(&message.content) {
-                Ok(d) => d,
-                Err(e) => {
-                    tracing::error!("Failed to decode message: {:?}", e);
-                    continue;
-                }
-            };
-            
-            // Create response
+            // Broadcast encrypted content (clients will decrypt)
             let response = MessageResponse {
                 id: message.id,
                 user_id: message.user_id,
                 username: Some(username.clone()),
-                content: decoded_content,
+                content: message.content.clone(),  // Send encrypted content
                 created_at: message.created_at,
                 edited_at: message.edited_at,
                 reply_to: message.reply_to,
             };
             
-            // Broadcast to all clients
             if let Ok(json) = serde_json::to_string(&response) {
                 let _ = broadcast_tx.send(json);
             }
         }
     });
     
-    // Wait for either task to finish
     tokio::select! {
         _ = (&mut send_task) => recv_task.abort(),
         _ = (&mut recv_task) => send_task.abort(),
     };
     
-    tracing::info!("WebSocket connection closed for user: {}", user_id);
+    tracing::info!("WebSocket connection closed for user: {}", user_id_for_log);
 }

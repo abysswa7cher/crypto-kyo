@@ -4,6 +4,9 @@ use axum::{
     Json,
     extract::{State, Query},
 };
+use axum::response::IntoResponse;
+use axum::http::{StatusCode, Method, Uri};
+
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::net::SocketAddr;
@@ -110,9 +113,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/me", get(handlers::get_current_user))
         .route("/api/invite", post(handlers::create_invitation))
         .route("/api/messages", get(handlers::get_messages))
-        .route("/ws", get(handlers::ws_handler))
+        .route("/api/ws", get(handlers::ws_handler))
+        .fallback(fallback)
         .with_state(state)
-        .layer(cors);
+        // .layer(cors);
+        .layer(tower_http::trace::TraceLayer::new_for_http());
     
     tracing::info!("Routes registered: /health, /api/auth/register, /api/auth/login, /api/invitations");
     
@@ -124,4 +129,9 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn fallback(method: Method, uri: Uri) -> impl IntoResponse {
+    println!("DEBUG: Received {} request at {}", method, uri);
+    (StatusCode::NOT_FOUND, format!("No route found for {} {}", method, uri))
 }

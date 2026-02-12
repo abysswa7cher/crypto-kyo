@@ -7,11 +7,11 @@ use crate::{
 };
 use axum::{extract::State, Json};
 
+// src/handlers/messages.rs
 pub async fn get_messages(
     State(state): State<AppState>,
     claims: Claims,
 ) -> Result<Json<Vec<MessageResponse>>> {
-    // Fetch recent messages (last 100)
     let messages = sqlx::query_as!(
         Message,
         r#"
@@ -25,14 +25,12 @@ pub async fn get_messages(
     .await
     .map_err(|e| AppError::Database(e))?;
     
-    // Decode messages and fetch usernames
     let mut responses = Vec::new();
     
     for message in messages {
-        // Decode content
-        let decoded_content = state.stego_service.decode(&message.content)?;
+        // NO DECRYPTION - send encrypted content to client
+        // Client will decrypt with their salt
         
-        // Get username if user_id exists
         let username = if let Some(uid) = message.user_id {
             sqlx::query_scalar!(
                 "SELECT username FROM users WHERE id = $1",
@@ -49,15 +47,13 @@ pub async fn get_messages(
             id: message.id,
             user_id: message.user_id,
             username,
-            content: decoded_content,
+            content: message.content,  // Send encrypted content
             created_at: message.created_at,
             edited_at: message.edited_at,
             reply_to: message.reply_to,
         });
     }
     
-    // Reverse to get chronological order (oldest first)
     responses.reverse();
-    
     Ok(Json(responses))
 }
