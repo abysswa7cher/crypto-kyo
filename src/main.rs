@@ -5,8 +5,7 @@ use axum::{
     extract::{State, Query},
 };
 use axum::response::IntoResponse;
-use axum::http::{StatusCode, Method, Uri};
-
+use axum::http::{StatusCode, Method, Uri, HeaderValue};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::net::SocketAddr;
@@ -100,9 +99,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Setup CORS
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin("https://https://crypto-kyo.onrender.com".parse::<HeaderValue>().unwrap())
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+        .allow_credentials(true);
 
     // Build router
     let app = Router::new()
