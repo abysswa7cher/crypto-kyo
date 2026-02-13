@@ -20,15 +20,14 @@ pub async fn register(
 ) -> Result<(StatusCode, Json<UserResponse>)> {
     
     //Validate invitation token
-    let invitation = sqlx::query_as!(
-        crate::models::Invitation,
+    let invitation = sqlx::query_as::<_, crate::models::Invitation>(
         r#"
-        SELECT token, created_by, expires_at as "expires_at!", used_by, used_at, created_at as "created_at!"
+        SELECT token, created_by, expires_at, used_by, used_at, created_at
         FROM invitations
         WHERE token = $1 AND used_by IS NULL AND expires_at > NOW()
-        "#,
-        payload.invitation_token
+        "#
     )
+        .bind(&payload.invitation_token)
         .fetch_optional(&state.db)
         .await
         .map_err(|e| AppError::Database(e))?
@@ -52,17 +51,16 @@ pub async fn register(
     let password_hash = hash(&payload.password, DEFAULT_COST)?;
 
     //Create user
-    let user = sqlx::query_as!(
-        User, 
+    let user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (username, email, password_hash, is_admin)
         VALUES ($1, $2, $3, false)
-        RETURNING id, username, email, password_hash, is_admin as "is_admin!", created_at as "created_at!", last_seen
-        "#,
-        payload.username,
-        payload.email,
-        password_hash
+        RETURNING id, username, email, password_hash, is_admin, created_at, last_seen
+        "#
     )
+        .bind(&payload.username)
+        .bind(&payload.email)
+        .bind(&password_hash)
         .fetch_one(&state.db)
         .await
         .map_err(|e| {
@@ -74,15 +72,15 @@ pub async fn register(
             AppError::Database(e)
         })?;
 
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE invitations
         SET used_by = $1, used_at = NOW()
         WHERE token = $2
-        "#,
-        user.id,
-        payload.invitation_token
+        "#
     )
+    .bind(&user.id)
+    .bind(&invitation.token)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
@@ -96,15 +94,14 @@ pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<crate::models::LoginRequest>,
 ) -> Result<Json<crate::services::AuthResponse>> {
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, is_admin as "is_admin!", created_at as "created_at!", last_seen
+        SELECT id, username, email, password_hash, is_admin, created_at, last_seen
         FROM users
         WHERE email = $1
-        "#,
-        payload.email
+        "#
     )
+    .bind(&payload.email)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?
@@ -116,10 +113,10 @@ pub async fn login(
         return Err(AppError::Validation("Invalid credentials".to_string()));
     }
 
-    sqlx::query!(
-        "UPDATE users SET last_seen = NOW() WHERE id = $1",
-        user.id
+    sqlx::query(
+        "UPDATE users SET last_seen = NOW() WHERE id = $1"
     )
+    .bind(&user.id)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
@@ -132,15 +129,15 @@ pub async fn login(
     let refresh_token = state.jwt_service.generate_refresh_token();
     let refresh_expires = chrono::Utc::now() + Duration::days(state.jwt_service.refresh_expiry_days());
     
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO refresh_tokens (user_id, token, expires_at)
         VALUES ($1, $2, $3)
-        "#,
-        user.id,
-        refresh_token,
-        refresh_expires
+        "#
     )
+    .bind(&user.id)
+    .bind(&refresh_token)
+    .bind(&refresh_expires)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
@@ -178,15 +175,15 @@ pub async fn create_invitation(
     let expires_at = chrono::Utc::now() + Duration::hours(expiry_hours);
 
     // Create invitation
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO invitations (token, created_by, expires_at)
         VALUES ($1, $2, $3)
-        "#,
-        token,
-        user_id,
-        expires_at
+        "#
     )
+    .bind(&token)
+    .bind(&user_id)
+    .bind(&expires_at)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
@@ -258,39 +255,37 @@ pub async fn refresh_token(
     use chrono::Duration;
 
     // Validate refresh token
-    let token_record = sqlx::query_as!(
-        crate::models::RefreshToken,
+    let token_record = sqlx::query_as::<_, crate::models::RefreshToken>(
         r#"
-        SELECT id, user_id, token, expires_at as "expires_at!", created_at as "created_at!", revoked as "revoked!"
+        SELECT id, user_id, token, expires_at, created_at, revoked
         FROM refresh_tokens
         WHERE token = $1 AND expires_at > NOW() AND revoked = false
-        "#,
-        payload.refresh_token
+        "#
     )
+    .bind(&payload.refresh_token)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?
     .ok_or_else(|| AppError::Validation("Invalid or expired refresh token".to_string()))?;
 
     // Get user
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, is_admin as "is_admin!", created_at as "created_at!", last_seen
+        SELECT id, username, email, password_hash, is_admin, created_at, last_seen
         FROM users
         WHERE id = $1
-        "#,
-        token_record.user_id
+        "#
     )
+    .bind(&token_record.user_id)
     .fetch_one(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
 
     // Revoke old refresh token
-    sqlx::query!(
-        "UPDATE refresh_tokens SET revoked = true WHERE id = $1",
-        token_record.id
+    sqlx::query(
+        "UPDATE refresh_tokens SET revoked = true WHERE id = $1"
     )
+    .bind(token_record.id)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;
@@ -305,15 +300,15 @@ pub async fn refresh_token(
     let refresh_expires = chrono::Utc::now() + Duration::days(state.jwt_service.refresh_expiry_days());
 
     // Store new refresh token
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO refresh_tokens (user_id, token, expires_at)
         VALUES ($1, $2, $3)
-        "#,
-        user.id,
-        refresh_token,
-        refresh_expires
+        "#
     )
+    .bind(&user.id)
+    .bind(&refresh_token)
+    .bind(&refresh_expires)
     .execute(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?;

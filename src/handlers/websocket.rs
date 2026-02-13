@@ -75,16 +75,15 @@ async fn handle_socket(socket: WebSocket, state: AppState, claims: Claims) {
                 Err(_) => continue,
             };
             
-            let message = match sqlx::query_as!(
-                DbMessage,
+            let message = match sqlx::query_as::<_, DbMessage>(
                 r#"
                 INSERT INTO messages (user_id, content)
                 VALUES ($1, $2)
-                RETURNING id, user_id, content, created_at as "created_at!", edited_at, reply_to
-                "#,
-                user_uuid,
-                content  // Store encrypted content as-is
+                RETURNING id, user_id, content, created_at, edited_at, reply_to
+                "#
             )
+            .bind(&user_uuid)
+            .bind(&content)
             .fetch_one(&db)
             .await
             {

@@ -12,10 +12,9 @@ pub async fn get_messages(
     State(state): State<AppState>,
     claims: Claims,
 ) -> Result<Json<Vec<MessageResponse>>> {
-    let messages = sqlx::query_as!(
-        Message,
+    let messages = sqlx::query_as::<_, Message>(
         r#"
-        SELECT id, user_id, content, created_at as "created_at!", edited_at, reply_to
+        SELECT id, user_id, content, created_at, edited_at, reply_to
         FROM messages
         ORDER BY created_at DESC
         LIMIT 100
@@ -32,10 +31,10 @@ pub async fn get_messages(
         // Client will decrypt with their salt
         
         let username = if let Some(uid) = message.user_id {
-            sqlx::query_scalar!(
+            sqlx::query_scalar(
                 "SELECT username FROM users WHERE id = $1",
-                uid
             )
+            .bind(&uid)
             .fetch_optional(&state.db)
             .await
             .map_err(|e| AppError::Database(e))?
