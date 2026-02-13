@@ -1,7 +1,6 @@
 # .gitignore
 /target
 .env
-sqlx-data.json
 *.db
 *.db-shm
 *.db-wal
