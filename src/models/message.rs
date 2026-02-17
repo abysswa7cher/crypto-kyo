@@ -13,12 +13,6 @@ pub struct Message {
     pub reply_to: Option<Uuid>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateMessageRequest {
-    pub content: String,
-    pub reply_to: Option<Uuid>,
-}
-
 #[derive(Debug, Serialize, Clone)]
 pub struct MessageResponse {
     pub id: Uuid,

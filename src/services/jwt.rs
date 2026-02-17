@@ -1,9 +1,9 @@
 use crate::models::User;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use serde::{Deserialize, Serialize};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use rand::RngExt;
 use rand::distr::Alphanumeric;
-use rand::{Rng, RngExt};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -29,7 +29,10 @@ impl JwtService {
         }
     }
 
-    pub fn generate_access_token(&self, user: &User) -> Result<String, jsonwebtoken::errors::Error> {
+    pub fn generate_access_token(
+        &self,
+        user: &User,
+    ) -> Result<String, jsonwebtoken::errors::Error> {
         let now = Utc::now();
         let exp = now + Duration::seconds(self.access_expiry);
 

@@ -2,14 +2,13 @@ use axum::{
     routing::{get, post},
     Router,
     Json,
-    extract::{State, Query},
+    extract::{State},
 };
 use axum::response::IntoResponse;
 use axum::http::{StatusCode, Method, Uri, HeaderValue};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -25,13 +24,7 @@ mod middleware;
 struct AppState {
     db: sqlx::PgPool,
     jwt_service: Arc<services::JwtService>,
-    stego_service: Arc<services::SteganographyService>,
     broadcast_tx: broadcast::Sender<String>,
-}
-
-#[derive(Deserialize)]
-struct CreateInviteQuery {
-    admin_id: String,
 }
 
 async fn health_check(State(state): State<AppState>) -> Json<Value> {
@@ -61,9 +54,9 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "3000".to_string())
+        .unwrap_or_else(|_| "4100".to_string())
         .parse::<u16>()?;
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
@@ -80,28 +73,19 @@ async fn main() -> anyhow::Result<()> {
 
     let jwt_service = Arc::new(services::JwtService::new(jwt_secret, jwt_expiry));
 
-    let stego_salt = std::env::var("DEFAULT_STEGO_SALT")
-        .expect("DEFAULT_STEGO_SALT must be set");
-
-    let stego_service = Arc::new(
-        services::SteganographyService::new(&stego_salt)
-        .map_err(|e| anyhow::anyhow!("Failed to create stego service: {:?}", e))?
-    );
-
     let (broadcast_tx, _) = broadcast::channel(100);
 
     let state = AppState { 
         db: pool, 
         jwt_service,
-        stego_service,
         broadcast_tx
     };
 
     // Setup CORS
     let cors = CorsLayer::new()
-        .allow_origin("https://https://crypto-kyo.onrender.com".parse::<HeaderValue>().unwrap())
+        .allow_origin("http://localhost:4200".parse::<HeaderValue>().unwrap())
+        .allow_origin("http://192.168.3.159:4200".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any)
         .allow_credentials(true);
 
     // Build router
@@ -116,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/ws", get(handlers::ws_handler))
         .fallback(fallback)
         .with_state(state)
-        // .layer(cors);
+        .layer(cors)
         .layer(tower_http::trace::TraceLayer::new_for_http());
     
     tracing::info!("Routes registered: /health, /api/auth/register, /api/auth/login, /api/invitations");

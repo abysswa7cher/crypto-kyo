@@ -46,6 +46,6 @@ impl From<User> for UserResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub email: String,
+    pub username: String,
     pub password: String,
 }

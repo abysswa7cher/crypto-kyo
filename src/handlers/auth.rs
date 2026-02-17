@@ -98,10 +98,10 @@ pub async fn login(
         r#"
         SELECT id, username, email, password_hash, is_admin, created_at, last_seen
         FROM users
-        WHERE email = $1
+        WHERE username = $1
         "#
     )
-    .bind(&payload.email)
+    .bind(&payload.username)
     .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError::Database(e))?
@@ -212,34 +212,6 @@ pub async fn get_current_user(
         "email": claims.email,
         "is_admin": claims.is_admin,
     })))
-}
-
-#[derive(Deserialize)]
-pub struct StegoTestRequest {
-    pub message: String,
-}
-
-#[derive(serde::Serialize)]
-pub struct StegoTestResponse {
-    pub original: String,
-    pub encoded: String,
-    pub decoded: String,
-    pub matches: bool,
-}
-
-pub async fn test_steganography(
-    State(state): State<AppState>,
-    Json(payload): Json<StegoTestRequest>,
-) -> Result<Json<StegoTestResponse>> {
-    let encoded = state.stego_service.encode(&payload.message)?;
-    let decoded = state.stego_service.decode(&encoded)?;
-    
-    Ok(Json(StegoTestResponse {
-        original: payload.message.clone(),
-        encoded: encoded.clone(),
-        decoded: decoded.clone(),
-        matches: payload.message == decoded,
-    }))
 }
 
 #[derive(Deserialize)]
